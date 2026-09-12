@@ -1,0 +1,21 @@
+name: "Matrix Video Player"
+version: "0.1.0"
+slug: "matrix_video_player"
+description: "Fetches a YouTube video and streams it to a WLED matrix over DDP"
+arch:
+  - aarch64
+  - amd64
+init: false
+host_network: true
+ports:
+  8787/tcp: 8787
+options:
+  wled_host: "192.168.1.77"
+  matrix_width: 32
+  matrix_height: 32
+  fps: 20
+schema:
+  wled_host: str
+  matrix_width: int
+  matrix_height: int
+  fps: int
