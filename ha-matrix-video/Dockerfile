@@ -12,7 +12,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     flask \
     yt-dlp \
     opencv-python-headless \
-    numpy
+    "numpy<2"
 
 COPY app.py /app.py
 
