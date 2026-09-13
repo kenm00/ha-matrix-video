@@ -174,12 +174,17 @@ def play():
     video_url = (data.get("video_url") or "").strip()
     cache_key = sanitize(data.get("cache_key") or video_url)
 
-    if not video_url:
-        return jsonify({"error": "video_url is required"}), 400
-
-    video_path = find_or_download(video_url, cache_key)
-    if video_path is None:
-        return jsonify({"error": "could not find or download video"}), 502
+    # A cache hit doesn't need video_url at all -- check the cache before
+    # requiring it, so callers that already know it's cached can omit it.
+    existing = list(CACHE_DIR.glob(f"{cache_key}.*"))
+    if existing:
+        video_path = existing[0]
+    else:
+        if not video_url:
+            return jsonify({"error": "video_url is required when not cached"}), 400
+        video_path = find_or_download(video_url, cache_key)
+        if video_path is None:
+            return jsonify({"error": "could not find or download video"}), 502
 
     stop_stream()
     _stream_thread = threading.Thread(
