@@ -103,13 +103,23 @@ def stream_loop(video_path: str) -> None:
         app.logger.error("Could not open video: %s", video_path)
         return
 
-    frame_interval = 1.0 / FPS
+    native_fps = cap.get(cv2.CAP_PROP_FPS) or FPS
+    frame_skip = max(1, round(native_fps / FPS)) if FPS > 0 else 1
+    frame_index = 0
+    start_time = time.monotonic()
+
     try:
         while not _stop_event.is_set():
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop back to the start
+                frame_index = 0
+                start_time = time.monotonic()
                 continue
+
+            frame_index += 1
+            if frame_index % frame_skip != 0:
+                continue  # drop frames to hit the target output rate
 
             cropped = center_crop_to_aspect(frame)
             resized = cv2.resize(
@@ -117,7 +127,14 @@ def stream_loop(video_path: str) -> None:
             )
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             send_ddp_frame(rgb.tobytes())
-            time.sleep(frame_interval)
+
+            # Pace against the video's real timeline instead of a fixed per-frame
+            # sleep, so decode/resize/send overhead doesn't accumulate into drift.
+            target_elapsed = frame_index / native_fps
+            actual_elapsed = time.monotonic() - start_time
+            sleep_time = target_elapsed - actual_elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
     finally:
         cap.release()
 
