@@ -159,6 +159,12 @@ def find_or_download(video_url: str, cache_key: str) -> Optional[Path]:
     downloaded = list(CACHE_DIR.glob(f"{cache_key}.*"))
     return downloaded[0] if downloaded else None
 
+@app.route("/cached", methods=["GET"])
+def cached():
+    """Check whether a video for this cache_key already exists, with no download attempt."""
+    cache_key = sanitize(request.args.get("cache_key", ""))
+    existing = list(CACHE_DIR.glob(f"{cache_key}.*"))
+    return jsonify({"cached": bool(existing)})
 
 @app.route("/play", methods=["POST"])
 def play():
