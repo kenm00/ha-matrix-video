@@ -144,8 +144,7 @@ def find_or_download(video_url: str, cache_key: str) -> Optional[Path]:
         [
             "yt-dlp",
             video_url,
-            "-f", "bestvideo[height<=480]+bestaudio/best[height<=480]",
-            "--merge-output-format", "mp4",
+            "-f", "bestvideo[height<=240]/worst",
             "-o", out_template,
         ],
         capture_output=True,
