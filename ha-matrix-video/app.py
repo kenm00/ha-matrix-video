@@ -80,6 +80,22 @@ def send_ddp_frame(rgb_bytes: bytes) -> None:
         offset += len(chunk)
 
 
+def center_crop_to_aspect(frame):
+    """Crop the frame's center to the configured matrix aspect ratio."""
+    frame_height, frame_width = frame.shape[:2]
+    target_aspect = MATRIX_WIDTH / MATRIX_HEIGHT
+    frame_aspect = frame_width / frame_height
+
+    if frame_aspect > target_aspect:
+        crop_width = int(frame_height * target_aspect)
+        left = (frame_width - crop_width) // 2
+        return frame[:, left : left + crop_width]
+
+    crop_height = int(frame_width / target_aspect)
+    top = (frame_height - crop_height) // 2
+    return frame[top : top + crop_height, :]
+
+
 def stream_loop(video_path: str) -> None:
     """Background thread: decode frames and push them to the matrix until stopped."""
     cap = cv2.VideoCapture(video_path)
@@ -95,8 +111,9 @@ def stream_loop(video_path: str) -> None:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # loop back to the start
                 continue
 
+            cropped = center_crop_to_aspect(frame)
             resized = cv2.resize(
-                frame, (MATRIX_WIDTH, MATRIX_HEIGHT), interpolation=cv2.INTER_AREA
+                cropped, (MATRIX_WIDTH, MATRIX_HEIGHT), interpolation=cv2.INTER_AREA
             )
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             send_ddp_frame(rgb.tobytes())
