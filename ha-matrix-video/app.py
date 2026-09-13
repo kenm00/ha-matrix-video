@@ -95,8 +95,16 @@ def center_crop_to_aspect(frame):
     top = (frame_height - crop_height) // 2
     return frame[top : top + crop_height, :]
 
+def start_stream(video_path: Path, start_offset: float = 0.0) -> None:
+    """Stop whatever's playing and start streaming the given file to the matrix."""
+    global _stream_thread
+    stop_stream()
+    _stream_thread = threading.Thread(
+        target=stream_loop, args=(str(video_path), start_offset), daemon=True
+    )
+    _stream_thread.start()
 
-def stream_loop(video_path: str) -> None:
+def stream_loop(video_path: str, start_offset: float = 0.0) -> None:
     """Background thread: decode frames and push them to the matrix until stopped."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -104,9 +112,21 @@ def stream_loop(video_path: str) -> None:
         return
 
     native_fps = cap.get(cv2.CAP_PROP_FPS) or FPS
+    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    duration = (frame_count / native_fps) if native_fps else 0.0
+
+    # Don't seek past a clip shorter than the download delay
+    if duration > 0:
+        start_offset = min(start_offset, max(duration - 1.0, 0.0))
+
     frame_skip = max(1, round(native_fps / FPS)) if FPS > 0 else 1
     frame_index = 0
-    start_time = time.monotonic()
+
+    if start_offset > 0:
+        frame_index = int(start_offset * native_fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+
+    start_time = time.monotonic() - start_offset
 
     try:
         while not _stop_event.is_set():
@@ -128,8 +148,6 @@ def stream_loop(video_path: str) -> None:
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             send_ddp_frame(rgb.tobytes())
 
-            # Pace against the video's real timeline instead of a fixed per-frame
-            # sleep, so decode/resize/send overhead doesn't accumulate into drift.
             target_elapsed = frame_index / native_fps
             actual_elapsed = time.monotonic() - start_time
             sleep_time = target_elapsed - actual_elapsed
@@ -190,25 +208,24 @@ def play():
     video_url = (data.get("video_url") or "").strip()
     cache_key = sanitize(data.get("cache_key") or video_url)
 
-    # A cache hit doesn't need video_url at all -- check the cache before
-    # requiring it, so callers that already know it's cached can omit it.
     existing = list(CACHE_DIR.glob(f"{cache_key}.*"))
+    start_offset = 0.0
+
     if existing:
         video_path = existing[0]
     else:
         if not video_url:
             return jsonify({"error": "video_url is required when not cached"}), 400
+        download_start = time.monotonic()
         video_path = find_or_download(video_url, cache_key)
         if video_path is None:
             return jsonify({"error": "could not find or download video"}), 502
+        start_offset = time.monotonic() - download_start  # catch up by the download time
 
-    stop_stream()
-    _stream_thread = threading.Thread(
-        target=stream_loop, args=(str(video_path),), daemon=True
+    start_stream(video_path, start_offset)
+    return jsonify(
+        {"status": "playing", "file": str(video_path), "start_offset": round(start_offset, 2)}
     )
-    _stream_thread.start()
-
-    return jsonify({"status": "playing", "file": str(video_path)})
 
 
 @app.route("/stop", methods=["POST"])

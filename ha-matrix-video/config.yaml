@@ -1,5 +1,5 @@
 name: "Matrix Video Player"
-version: "0.1.4"
+version: "0.1.5"
 slug: "matrix_video_player"
 description: "Fetches a YouTube video and streams it to a WLED matrix over DDP"
 arch:
